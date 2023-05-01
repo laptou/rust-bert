@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::convert::TryInto;
 
 use rust_tokenizers::tokenizer::TruncationStrategy;
-use tch::{nn, Tensor};
+use tch::{nn, Kind, Tensor};
 
 use crate::albert::AlbertForSentenceEmbeddings;
 use crate::bert::BertForSentenceEmbeddings;
@@ -341,12 +341,22 @@ impl SentenceEmbeddingsModel {
     where
         S: AsRef<str> + Sync,
     {
+        let dev = self.var_store.device();
+
+        if inputs.len() == 0 {
+            return Ok(SentenceEmbeddingsModelOuput {
+                embeddings: Tensor::empty(&[0, 0], (Kind::Float, dev)),
+                all_attentions: None,
+            });
+        }
+
         let SentenceEmbeddingsTokenizerOuput {
             tokens_ids,
             tokens_masks,
         } = self.tokenize(inputs);
-        let tokens_ids = Tensor::stack(&tokens_ids, 0).to(self.var_store.device());
-        let tokens_masks = Tensor::stack(&tokens_masks, 0).to(self.var_store.device());
+
+        let tokens_ids = Tensor::stack(&tokens_ids, 0).to(dev);
+        let tokens_masks = Tensor::stack(&tokens_masks, 0).to(dev);
 
         let (tokens_embeddings, all_attentions) =
             tch::no_grad(|| self.transformer.forward(&tokens_ids, &tokens_masks))?;
@@ -358,6 +368,7 @@ impl SentenceEmbeddingsModel {
         } else {
             mean_pool
         };
+
         let maybe_normalized = if self.normalize_embeddings {
             let norm = &maybe_linear
                 .norm_scalaropt_dim(2, &[1], true)

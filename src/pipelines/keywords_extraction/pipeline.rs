@@ -219,8 +219,15 @@ impl<'a> KeywordExtractionModel<'a> {
         S: AsRef<str> + Sync,
     {
         let words = self.tokenizer.tokenize_list(inputs, self.ngram_range);
+
         let (flat_word_list, document_boundaries) =
             KeywordExtractionModel::flatten_word_list(&words);
+
+        // if there are no words in any of the documents, return a list of empty
+        // lists early, b/c dealing w/ the edge case sucks otherwise
+        if flat_word_list.len() == 0 {
+            return Ok(inputs.iter().map(|_| vec![]).collect());
+        }
 
         let document_embeddings = self
             .sentence_embeddings_model
